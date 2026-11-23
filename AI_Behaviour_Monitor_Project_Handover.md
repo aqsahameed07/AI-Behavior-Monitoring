@@ -6,7 +6,7 @@
 **Environment:** VS Code / Windows / PowerShell  
 **Python Version:** Python 3.12  
 **Virtual Environment:** `venv`  
-**Current Stage:** Custom YOLO26 Model Training In Progress (Epoch 5/50). Dataset cleaned and validated. Mid-training checks confirm model is detecting phones at 94% confidence.
+**Current Stage:** Custom YOLO26 3-class model (phone + wallet + mouse) — fine-tuning IN PROGRESS.
 
 ---
 
@@ -52,7 +52,7 @@ The initial focus is mobile phone usage detection.
 |---|---|
 | Python 3.12 | Main development language |
 | OpenCV | Image and video processing |
-| Ultralytics YOLO26 | Object detection (custom trained) |
+| Ultralytics YOLO26 | Object detection (custom trained, 3 classes) |
 | MediaPipe Tasks | Hand landmark detection |
 | NumPy | Mathematical calculations |
 | Pandas | Data processing |
@@ -66,45 +66,23 @@ The initial focus is mobile phone usage detection.
 # 4. Development Environment
 
 ## Project Location
-
 `D:\AI-Behaviour-Monitor`
 
 ## Python Installation
-
-Python 3.14.8 was initially installed as the default Python version.
-
-Python 3.12 was installed separately for compatibility with project libraries.
-
-Both Python versions remain installed.
-
-Python 3.12 was selected for this project.
+Python 3.14.8 was initially installed as the default Python version. Python 3.12 was installed separately for compatibility with project libraries. Both Python versions remain installed. Python 3.12 was selected for this project.
 
 ## Virtual Environment
-
 Created using:
-
 ```powershell
 py -3.12 -m venv venv
 Activated using:
 
 powershell
 .\venv\Scripts\Activate.ps1
-Upgrade pip:
-
-powershell
-python -m pip install --upgrade pip
 Installed Libraries
 powershell
 pip install opencv-python ultralytics mediapipe numpy pandas matplotlib
-Verified imports:
-
-powershell
-python -c "import cv2, ultralytics, mediapipe, numpy, pandas, matplotlib; print('All libraries installed successfully!')"
-Result:
-
-text
-All libraries installed successfully!
-Verified package versions in the project virtual environment:
+Verified versions:
 
 text
 OpenCV: 5.1.0
@@ -114,8 +92,6 @@ NumPy: 2.5.5
 Pandas: 3.1.1
 Matplotlib: 3.11.2
 PyTorch: 2.15.0+cpu
-Important: Always activate the virtual environment before executing project scripts. The terminal should display (venv).
-
 5. Current Project Structure
 text
 AI-Behaviour-Monitor/
@@ -124,25 +100,30 @@ AI-Behaviour-Monitor/
 │
 ├── dataset/
 │   ├── phone_detection/
-│   │   ├── data.yaml
-│   │   ├── roboflow_data.yaml
+│   │   ├── data.yaml                       (nc: 3 — phone, wallet, mouse)
 │   │   ├── images/
-│   │   │   ├── train/
-│   │   │   ├── val/
-│   │   │   └── test/
+│   │   │   ├── train/                      (802 images: 742 phones + 30 wallets + 30 mice)
+│   │   │   ├── val/                        (234 images: 219 phones + 10 wallets + 5 mice)
+│   │   │   └── test/                       (109 images)
 │   │   ├── labels/
-│   │   │   ├── train/
-│   │   │   ├── val/
-│   │   │   └── test/
+│   │   │   ├── train/                      (802 labels)
+│   │   │   ├── val/                        (234 labels)
+│   │   │   └── test/                       (109 labels)
 │   │   └── labels_backup_before_normalization/
 │   └── quarantine/
 │
 ├── models/
 │   └── phone_detector/
-│       └── best_v1.pt
+│       ├── best_v1.pt                      (failed YOLO11 — do not use)
+│       ├── best_yolo26.pt                  (phone-only model, mAP50 = 0.943)
+│       └── yolo26_last_pt.pt               (epoch 50 phone-only)
 │
-├── reports/
-│   └── dataset_preview/
+├── runs/detect/
+│   ├── phone_yolo26_final-2/               (completed phone-only 50-epoch run)
+│   ├── phone_wallet_mouse_v1/              (CURRENT — 3-class fine-tuning)
+│   └── smoke_test_3class/                  (smoke test)
+│
+├── reports/dataset_preview/
 │
 ├── camera_test.py
 ├── test_yolo.py
@@ -153,307 +134,117 @@ AI-Behaviour-Monitor/
 ├── visualize_dataset.py
 ├── find_bad_labels.py
 ├── quarantine_bad_labels.py
+├── capture_negatives.py
+├── webcam_detection_v4.py
+├── webcam_detection_v5.py
+├── smart_detection.py
 │
 ├── sample_phone.jpg
 ├── phone_lying.jpg
+├── webcam_snapshot.jpg
+├── diag_frame_0.jpg ... diag_frame_4.jpg
 ├── yolo11n.pt
 ├── yolo26n.pt
 ├── hand_landmarker.task
 │
-├── combined_detection_result.jpg
-├── hand_detection_result.jpg
-│
-├── runs/
-│   └── detect/
-│       ├── phone_v1/
-│       ├── phone_v2/
-│       ├── phone_yolo26_clean/
-│       ├── phone_yolo26_v1/
-│       └── train-2/
-│
 ├── Readme.md
 └── AI_Behaviour_Monitor_Project_Handover.md
 6. Webcam Status
-The development PC currently does not have a camera connected.
+Webcam IS connected on the development PC.
 
-The initial OpenCV webcam test returned:
+Critical issue: OpenCV's default MSMF backend returns black frames on this webcam. DSHOW backend works but sometimes returns black frames during warmup.
 
-text
-Error: Could not access webcam!
-A camera_test.py file has been created.
+Confirmed fix: Use cv2.VideoCapture(index, cv2.CAP_DSHOW) and discard black frames until frame.mean() > 15.
 
-Current approach: Continue development using sample images and recorded videos. Live webcam testing will be performed when a camera becomes available.
+webcam_detection_v4.py and webcam_detection_v5.py implement robust warmup that waits for real frames.
 
-Do not block development waiting for webcam hardware.
+7. Pretrained YOLO11 Baseline (Historical)
+Model: yolo11n.pt (COCO, 80 classes)
 
-7. YOLO11 Object Detection (Baseline)
-Model
-The project originally used:
+Relevant classes: person (0), cell phone (67), remote (65), bowl (45)
 
-text
-yolo11n.pt
-This is a pretrained YOLO11 nano model.
+On sample_phone.jpg: cell phone 68.83%
 
-Relevant COCO Classes
-Class ID	Class
-0	person
-67	cell phone
-65	remote
-45	bowl
-Individual Phone Detection
-Created:
+On phone_lying.jpg: remote 47.02% (misclassification — motivated custom training)
 
-detect_phone.py
+8. MediaPipe Hand Detection (Working)
+MediaPipe 1.2.3, uses Tasks API
 
-Test 1: Phone in Hand
-Image:
+Model: hand_landmarker.task
 
-sample_phone.jpg
+Tested: 2 hands, 21 landmarks each, 42 total
 
-Detection results:
+Used for hand-phone proximity filter in smart_detection.py
 
-text
-Detected: person | Confidence: 77.56%
-Detected: cell phone | Confidence: 68.83%
-Detected: chair | Confidence: 66.71%
-Detected: chair | Confidence: 37.97%
-Result: Phone successfully detected.
-
-Test 2: Phone Lying on Desk
-Image:
-
-phone_lying.jpg
-
-Initial YOLO detection:
-
-text
-Detected: remote | Confidence: 47.02%
-Detected: bowl | Confidence: 40.82%
-YOLO located the phone but classified it as a remote control instead of a cell phone.
-
-This limitation motivated custom YOLO training.
-
-Temporary Detection Workaround (Retired)
-The old combined detection script treated both cell phone and remote as phone candidates. This workaround will be removed after successful YOLO26 integration.
-
-8. MediaPipe Hand Detection
-Installed Version
-text
-MediaPipe: 1.2.3
-The older API mp.solutions.hands is unavailable in this installation.
-
-Therefore, the project uses the current MediaPipe Tasks API.
-
-Hand Landmarker Model
-Downloaded:
-
-text
-hand_landmarker.task
-Hand Detection Script
-Created:
-
-test_hands.py
-
-The script uses:
-
-mp.tasks.BaseOptions
-
-mp.tasks.vision.HandLandmarker
-
-mp.tasks.vision.HandLandmarkerOptions
-
-VisionRunningMode.IMAGE
-
-Successful Test Results
-text
-Hands detected: 2
-
-Hand 1
-Landmarks: 21
-
-Hand 2
-Landmarks: 21
-
-Detection completed!
 9. Combined YOLO + MediaPipe Detection
-Status: Successfully implemented and tested (using YOLO11 baseline).
+combined_detection.py:
 
-Created:
+Loads YOLO + MediaPipe
 
-combined_detection.py
+Runs YOLO on original image
 
-Combined Detection Architecture
-Load the YOLO model.
+Runs MediaPipe on original image (not annotated)
 
-Load the MediaPipe Hand Landmarker model.
+Computes minimum hand-to-phone-box distance
 
-Read the original image.
+Flags "possible interaction" if distance < max(40, diagonal * 0.05)
 
-Create a separate output image for annotations.
+Saves annotated output
 
-Run YOLO object detection.
+Still using old YOLO11 baseline — needs update to 3-class model.
 
-Identify possible phone candidates.
+10. Custom Phone Dataset History
+Original dataset: 852/243/122 (1,217 images)
+After quarantine (146 bad pairs): 742/219/109 (1,070 images)
+Current (with negatives added): 802/234/109
 
-Run MediaPipe on the untouched original image.
+Class ID mapping in current dataset:
 
-Extract hand landmarks.
+Class 0 = phone (~900 annotations across 742 files)
 
-Calculate the nearest hand-to-phone distance.
+Class 1 = wallet (35 annotations across 30 files)
 
-Identify possible phone interaction.
+Class 2 = mouse (41 annotations across 30 files)
 
-Draw bounding boxes and hand landmarks.
+Important: Wallet and mouse labels were remapped from Roboflow's class 0 to classes 1 and 2 respectively. Their filename prefixes are wallet_* and mouse_*.
 
-Save the final annotated image.
-
-Hand-to-Phone Distance Calculation
-The script calculates the minimum distance between hand landmarks and the phone bounding box.
-
-python
-dx = max(x1 - x, 0, x - x2)
-dy = max(y1 - y, 0, y - y2)
-distance = np.sqrt(dx**2 + dy**2)
-nearest_distance = min(distances)
-Current proximity threshold:
-
-python
-threshold = max(40, diagonal * 0.05)
-Important: This is an image-pixel proximity heuristic. A result of 0.0px means at least one detected landmark lies inside or touches the bounding box. It does not prove that the hand is gripping or picking up the phone.
-
-10. Combined Detection Testing Results (YOLO11 Baseline)
-Test 1: Phone Being Held
-Image: sample_phone.jpg
-
-Combined results:
-
-text
-Phone candidates detected: 1
-Hands detected: 2
-
-Hand 1 -> Phone Candidate 1: 0.0px
-Hand 2 -> Phone Candidate 1: 0.0px
-
-Possible phone interaction detected!
-Test 2: Phone Lying on Desk
-Image: phone_lying.jpg
-
-Combined results:
-
-text
-Phone candidates detected: 1
-Hands detected: 0
-
-Combined detection completed!
-11. Custom Phone Detection Dataset
-A phone detection dataset is located under:
-
-text
-dataset/phone_detection/
-Current Dataset Split (After Cleaning)
-Split	Images	Labels
-Training	742	742
-Validation	219	219
-Test	109	109
-Total	1,070	1,070
-Original dataset had 1,217 images. 146 bad image/label pairs were quarantined (moved to dataset/quarantine/).
-
-Quarantined Files
-Count: 146 image/label pairs
-
-Location: dataset/quarantine/
-
-Reason: Bad annotations (oversized boxes with w > 0.95 or h > 0.95, or tiny boxes with w < 0.02 or h < 0.02)
-
-Can be reviewed later but should NOT be used for training.
-
-Dataset Configuration
-The primary dataset configuration is:
-
-text
-dataset/phone_detection/data.yaml
-Current contents:
-
-yaml
-path: D:/AI-Behaviour-Monitor/dataset/phone_detection
-train: images/train
-val: images/val
-test: images/test
-
-nc: 1
-names:
-  0: phone
-Label State (Verified)
-text
-All annotations use class ID 0 (phone).
-No invalid label records.
-No missing label files.
-No issues found after cleaning.
-Custom Tools Created for Dataset Verification
+11. Dataset Cleaning Tools
 visualize_dataset.py
-Loads 9 random images per split.
+Loads 9 random images per split
 
-Draws YOLO bounding boxes on them.
+Draws YOLO bounding boxes
 
-Saves preview grids to reports/dataset_preview/.
-
-Output: train_preview.jpg, val_preview.jpg, test_preview.jpg.
+Saves preview grids to reports/dataset_preview/
 
 find_bad_labels.py
-Scans all label files.
+Scans label files
 
-Reports: oversized boxes, tiny boxes, out-of-bounds coordinates, invalid class IDs.
+Reports: oversized boxes, tiny boxes, invalid class IDs
 
-Output: list of bad label files (or "No issues found").
+Returns "No issues found" when clean
 
 quarantine_bad_labels.py
-Reads the results of find_bad_labels.py.
+Moves bad image/label pairs to dataset/quarantine/
 
-Moves bad image/label pairs to dataset/quarantine/.
+Successfully quarantined 146 pairs
 
-Successfully quarantined 146 pairs.
+capture_negatives.py
+Captures webcam images for negatives
 
-12. Visual Dataset Verification (Completed)
-Visual verification was performed and found:
+Spacebar saves, W/M switch modes, Q quits
 
-✅ Most bounding boxes are tight and correctly placed around phones.
+12. Training History
+❌ Failed: YOLO11 v1
+Dataset: original 1,217 images (dirty — 151 bad labels)
 
-⚠️ One screenshot image (phone UI screenshot, not a real phone) was detected and quarantined.
+Result: mAP50 = 0.842 but detected NOTHING on real images
 
-⚠️ 146 additional images with oversized boxes were quarantined.
-
-✅ After cleaning, dataset contains 742 train + 219 val + 109 test = 1,070 clean images.
-
-13. Custom YOLO Training History
-Failed Attempt: YOLO11 v1
-Status: ❌ FAILED — do not use this model.
-
-Command used:
-
-powershell
-yolo detect train data="...data.yaml" model=yolo11n.pt epochs=10 imgsz=640 batch=8 device=cpu plots=True name=phone_v1
-Problems observed:
-
-Loss curves went UP, not down — classic overfitting.
-
-Catastrophic collapse at epoch 2 — mAP50 dropped from 0.343 to 0.154, then recovered.
-
-Final mAP50 = 0.842 but the model detected NOTHING on real test images:
-
-sample_phone.jpg: (no detections)
-
-phone_lying.jpg: (no detections)
-
-Root cause: 151 bad annotations in the dataset (oversized boxes teaching the model that "a phone fills the whole image").
+Cause: 151 oversized box annotations (box spanned entire image)
 
 Model saved at: models/phone_detector/best_v1.pt (do not use)
 
-Charts saved at: runs/detect/phone_v1/ (results.png shows the collapse)
-
-Current Training: YOLO26 (In Progress)
-Status: 🟡 IN PROGRESS — epoch 5/50 at time of documentation update.
-
-Command used:
+✅ Success: YOLO26 phone-only
+Command:
 
 powershell
 yolo detect train `
@@ -469,654 +260,320 @@ yolo detect train `
   cos_lr=True `
   patience=15 `
   plots=True `
-  name=phone_yolo26_clean
-Key improvements over v1:
-
-Setting	YOLO11 v1	YOLO26	Reason
-Model	yolo11n.pt	yolo26n.pt	Newest model
-Optimizer	auto (AdamW lr=0.002)	SGD lr=0.01	More stable for fine-tuning
-Epochs	10	50	Full convergence
-Batch	8	16	More stable gradients
-Cos LR	False	True	Smooth LR decay
-Dataset	1,217 (dirty)	1,070 (clean)	146 bad pairs removed
-Patience	100	15	Early stop if stuck
-Mid-training results (epoch 5/50):
+  name=phone_yolo26_final-2
+Result:
 
 Metric	Value
-mAP50	0.809
-mAP50-95	0.524
-Detections on sample_phone.jpg	1 phone at 0.94 confidence ✅
-Detections on phone_lying.jpg	Pending test
-Key insight: The mid-training check on last.pt (epoch 5) already produces a 94% confidence detection on sample_phone.jpg. This is vastly better than YOLO11 which detected nothing at epoch 10. The model is learning correctly.
+mAP50	0.943
+mAP50-95	0.708
+Precision	0.929
+Recall	0.867
+Best epoch (for mAP50-95)	35
+Best mAP50	0.947 (epoch 36)
+Training time	3.98 hours
+Saved model: models/phone_detector/best_yolo26.pt (5.4 MB, epoch 35)
 
-Note about box_loss: In YOLO26, box_loss appears to rise slightly in early epochs while cls_loss and mAP50 improve. This is normal for YOLO26's loss formulation and should not be a concern as long as mAP50 is climbing.
+Backed up to:
 
-Expected training time: ~4.5 hours on CPU.
+$env:USERPROFILE\Desktop\best_yolo26_BACKUP.pt
 
-Results will be saved to: runs/detect/phone_yolo26_clean/
+D:\Phone_Dataset_Backup_YYYY-MM-DD\best_yolo26.pt
 
-Best checkpoint will be at: runs/detect/phone_yolo26_clean/weights/best.pt
+🟡 In Progress: YOLO26 3-class (phone + wallet + mouse)
+Reason: Phone-only model has false positives on wallet and mouse (both are rectangular phone-shaped objects).
 
-14. Current Completed Features
-Feature	Status
-Python 3.12 setup	✅ Completed
-Virtual environment	✅ Completed
-Library installation	✅ Completed
-YOLO11 setup	✅ Completed
-YOLO person detection	✅ Tested
-YOLO cell phone detection	✅ Tested
-MediaPipe setup	✅ Completed
-Hand landmark detection	✅ Tested
-Combined YOLO + MediaPipe (YOLO11)	✅ Completed
-Phone-in-hand test (YOLO11)	✅ Successful
-Phone-on-desk test (YOLO11)	✅ Successful with workaround
-Hand-to-phone proximity	✅ Working
-Phone detection dataset	✅ Prepared
-Dataset split verification	✅ Completed
-Dataset class-ID normalization	✅ Completed
-Dataset backup created	✅ Completed
-Dataset label validation	✅ Completed
-Visual annotation verification	✅ Completed
-Bad label identification (151 issues)	✅ Completed
-Bad image/label quarantine (146 pairs)	✅ Completed
-Post-clean label verification	✅ No issues found
-Dataset counts after cleaning	✅ 742/219/109 matched
-YOLO11 training attempt	❌ Failed (model detects nothing)
-YOLO26 training	🟡 IN PROGRESS (epoch 5/50)
-Mid-training verification	✅ 94% confidence detection
-Custom model evaluation	⏳ Pending (after training)
-Integration with combined_detection.py	⏳ Pending (after training)
-Live webcam testing	⏳ Pending hardware
-Video processing	⏳ Not started
-Temporal behaviour recognition	⏳ Not started
-Phone usage timer	⏳ Not started
-Database	⏳ Not started
-Dashboard	⏳ Not started
+Smoke test passed: nc: 3 detected, 802 train images + 234 val images loaded, 1 epoch completed without errors.
+
+Training command:
+
+powershell
+yolo detect train `
+  data="D:\AI-Behaviour-Monitor\dataset\phone_detection\data.yaml" `
+  model="D:\AI-Behaviour-Monitor\models\phone_detector\best_yolo26.pt" `
+  epochs=20 `
+  imgsz=640 `
+  batch=16 `
+  device=cpu `
+  optimizer=SGD `
+  lr0=0.003 `
+  lrf=0.01 `
+  cos_lr=True `
+  patience=8 `
+  plots=True `
+  name=phone_wallet_mouse_v1
+Expected output: runs/detect/phone_wallet_mouse_v1/weights/best.pt
+
+Expected metrics after 20 epochs:
+
+phone mAP50 ≥ 0.90
+
+wallet mAP50 ≥ 0.75
+
+mouse mAP50 ≥ 0.70
+
+13. Webcam False Positive Problem (Diagnosed)
+Observed false positives:
+
+Wallet → detected as phone 0.55–0.70
+
+Mouse → detected as phone 0.55–0.70
+
+Cause: Both are rectangular, phone-shaped, and sometimes held near hands. The model learned "phone = rectangle near hand" and fires on them.
+
+Two approaches to fix (both in progress):
+
+Model-level (in progress): Add wallet and mouse as distinct classes (class 1 and 2). Model learns "wallet ≠ phone" explicitly.
+
+Application-level (planned): After 3-class model is done, apply filters in smart_detection.py:
+
+Position filter (reject bottom 25% of frame — desk objects)
+
+Persistence filter (require 5+ consecutive frames)
+
+Hand-proximity filter (MediaPipe hand within 150px of box)
+
+14. Webcam Diagnostic Files
+webcam_detection_v4.py — live detection with robust warmup + black frame handling
+
+webcam_detection_v5.py — adds aspect-ratio filter (rejects non-phone-shaped boxes)
+
+smart_detection.py — 3-layer filter (position, persistence, hand-proximity)
+
+webcam_snapshot.py — saves one frame and runs YOLO with conf=0.05
+
+webcam_diag.py — saves 5 consecutive frames with brightness checks
+
+diag_frame_0.jpg .. diag_frame_4.jpg — saved diagnostic frames
+
+Key finding: Webcam returns black frames until ~30-45 warmup frames. All detection scripts must:
+
+Use cv2.CAP_DSHOW (not MSMF)
+
+Discard frames until frame.mean() > 15
+
+Skip any frame with frame.mean() < 10 in main loop
+
 15. Known Limitations
-YOLO Classification
-The pretrained YOLO11 model misclassified phones depending on position, angle, and image quality. The custom-trained YOLO26 model is expected to fix this.
+Model Level
+Phone-only model (0.943) fires on wallet/mouse — being fixed via 3-class training
+
+Mouse/wallet detection depends on visual variety in training data
+
+False positives possible on any strong rectangle
 
 Hand Proximity
-Hand proximity alone cannot determine whether a phone is being held. Further checks are needed.
+Hand proximity alone cannot determine whether phone is being held
 
-Temporal Behaviour
-The current system processes individual images. Temporal behaviour recognition requires video processing.
+Needs combined with model + temporal filters
 
 Webcam
-No camera is currently available on the development PC. Recorded videos and sample images will be used for development.
+MSMF backend broken on this hardware
 
-16. Planned Dataset Strategy
-Custom Behaviour Dataset (Future)
-Eventually collect clips for:
+DSHOW works but needs 30+ frame warmup
 
-Sitting normally.
+Resolution limited to 1280×720 reliably
 
-Working on a laptop.
+16. Next Development Roadmap
+Step 1: Complete 3-class training ✅ (In Progress)
+Command running now. Estimated 1.5 hours. Wait for 20 epochs completed.
 
-Reaching for phone.
-
-Picking up phone.
-
-Holding phone.
-
-Looking at phone.
-
-Typing on phone.
-
-Talking on phone.
-
-Putting phone down.
-
-Walking away.
-
-Begin with approximately 30–50 clips per class.
-
-Include variation in lighting, camera distance, phone position, hand position, body posture, and recording sessions.
-
-Split training, validation, and test data by recording session to avoid data leakage.
-
-17. Next Development Roadmap
-Continue from the current YOLO26 training completion.
-
-Step 1: Finish YOLO26 Training ✅ (In Progress)
-Let training complete (~4.5 hours).
-
-Verify training logs show healthy mAP progression.
-
-Confirm best.pt saved successfully.
-
-Step 2: Evaluate the Custom YOLO26 Model
-Next immediate task after training completes:
-
-Test the model on the two standard images:
-
+Step 2: Test 3-class model
 powershell
-# Test 1: Phone in hand
-yolo detect predict model="D:\AI-Behaviour-Monitor\runs\detect\phone_yolo26_clean\weights\best.pt" source="D:\AI-Behaviour-Monitor\sample_phone.jpg" save=True conf=0.25 name=yolo26_final_held
+# Test on sample phone
+yolo detect predict `
+  model="D:\AI-Behaviour-Monitor\runs\detect\phone_wallet_mouse_v1\weights\best.pt" `
+  source="D:\AI-Behaviour-Monitor\sample_phone.jpg" `
+  save=True conf=0.25 name=TEST3_phone
 
-# Test 2: Phone on desk (the failing case)
-yolo detect predict model="D:\AI-Behaviour-Monitor\runs\detect\phone_yolo26_clean\weights\best.pt" source="D:\AI-Behaviour-Monitor\phone_lying.jpg" save=True conf=0.25 name=yolo26_final_desk
-Expected results:
+# Test on desk phone
+yolo detect predict `
+  model="D:\AI-Behaviour-Monitor\runs\detect\phone_wallet_mouse_v1\weights\best.pt" `
+  source="D:\AI-Behaviour-Monitor\phone_lying.jpg" `
+  save=True conf=0.25 name=TEST3_desk
+Expected: phone boxes at 0.85+ confidence.
 
-Both images should show detections
+Step 3: Webcam test with 3-class model
+Update webcam_detection_v5.py MODEL_PATH to point to 3-class model. Run and verify:
 
-Both should be classified as phone (not remote)
+Phone → phone box (green)
 
-Confidence should be 0.8+
+Wallet → wallet box (orange)
 
-If tests pass: proceed to Step 3.
-If tests fail: investigate (may need more epochs, different hyperparameters, or additional data cleaning).
+Mouse → mouse box (yellow)
 
-Step 3: Save the Trained Model
-Once YOLO26 is validated:
-
+Step 4: Save 3-class model
 powershell
-# Copy best.pt to permanent location
 Copy-Item `
-  -Path "D:\AI-Behaviour-Monitor\runs\detect\phone_yolo26_clean\weights\best.pt" `
-  -Destination "D:\AI-Behaviour-Monitor\models\phone_detector\best_yolo26.pt"
+  -Path "D:\AI-Behaviour-Monitor\runs\detect\phone_wallet_mouse_v1\weights\best.pt" `
+  -Destination "D:\AI-Behaviour-Monitor\models\phone_detector\best_yolo26_3class.pt" `
+  -Force
 
-# Create dated backup
 Copy-Item `
-  -Path "D:\AI-Behaviour-Monitor\models\phone_detector\best_yolo26.pt" `
-  -Destination "D:\AI-Behaviour-Monitor\models\phone_detector\best_yolo26_$(Get-Date -Format 'yyyy-MM-dd').pt"
-Step 4: Multiple Image Testing
-Test the model on additional images covering:
+  -Path "D:\AI-Behaviour-Monitor\models\phone_detector\best_yolo26_3class.pt" `
+  -Destination "$env:USERPROFILE\Desktop\best_yolo26_3class_BACKUP.pt" `
+  -Force
+Keep best_yolo26.pt (phone-only) as fallback.
 
-Phone held in hand
-
-Phone lying on desk
-
-Hand near phone
-
-Hand away from phone
-
-No phone visible
-
-Phone at unusual angles
-
-Multiple phones in frame
-
-Record YOLO classifications and confidence scores. Investigate false positives before changing models.
-
-Step 5: Compare Pretrained vs Custom YOLO26
-Compare yolo11n.pt (pretrained) against models/phone_detector/best_yolo26.pt (custom).
-
-Specifically check whether the custom model fixes:
-
-The remote misclassification on phone_lying.jpg
-
-Overall confidence on new images
-
-False positive rate on non-phone objects
-
-Do not assume the custom model is better without evaluating it.
-
-Step 6: Integrate the Custom Model
-After successful evaluation, update the model-loading configuration in:
-
-text
-combined_detection.py
-Replace the pretrained model with the custom checkpoint:
+Step 5: Update combined_detection.py
+Change to 3-class model:
 
 python
-MODEL_PATH = "D:/AI-Behaviour-Monitor/models/phone_detector/best_yolo26.pt"
-Remove the POSSIBLE_PHONE_CLASSES workaround — the custom model detects phone as class 0 directly.
+MODEL_PATH = "D:/AI-Behaviour-Monitor/models/phone_detector/best_yolo26_3class.pt"
+CLASSES_OF_INTEREST = ["phone"]  # ignore wallet/mouse
+Test on sample_phone.jpg and phone_lying.jpg.
 
-Retest the existing phone-in-hand and phone-on-desk images.
+Step 6: Build smart_detection.py with app-layer filters
+Already drafted. Filters:
 
-Keep the original yolo11n.pt available for comparison.
+Position filter — reject bottom 25% of frame (mouse on desk)
 
-Step 7: Recorded Video Processing
-Build a new script:
+Persistence filter — require 5+ consecutive frames
 
+Hand-proximity filter — require MediaPipe hand within 150px
+
+Duration filter — reject sessions < 10 seconds (in behavior state machine)
+
+Step 7: Build video_detection.py
+Load recorded video
+
+Run YOLO (3-class) + MediaPipe per frame
+
+Apply filters
+
+Save annotated output video
+
+Step 8: Behavior State Machine
 text
-video_detection.py
-The script should:
+IDLE → HAND_APPROACHING → PHONE_PICKUP_CANDIDATE → PHONE_IN_USE
+→ PHONE_PUT_DOWN_CANDIDATE → SAVE_SESSION → IDLE
+Do not start/stop timer on single frame.
 
-Load a recorded video.
+Step 9: Usage Timer + Database
+Session start/end, duration, pickup count, daily total, average.
 
-Extract frames.
+Step 10: Backend (FastAPI + MongoDB)
+Step 11: Frontend (React + Vite dashboard)
+17. Safe-to-Delete Files
+Item	Reason
+runs/detect/phone_v1/	Failed YOLO11
+runs/detect/phone_yolo26_v1/	Superseded
+runs/detect/smoke_test_3class/	Smoke test
+runs/detect/smoke_test_negatives/	Smoke test
+models/phone_detector/best_v1.pt	Failed YOLO11
+dataset/quarantine/	Bad labels (optional to keep)
+webcam_snapshot.jpg	Diagnostic output
+diag_frame_*.jpg	Diagnostic output
+Never delete:
 
-Run YOLO on each frame.
+runs/detect/phone_yolo26_final-2/ — phone-only model training
 
-Run MediaPipe hand detection.
+runs/detect/phone_wallet_mouse_v1/ — 3-class model training
 
-Track phone and hand positions.
+models/phone_detector/best_yolo26.pt
 
-Calculate hand-to-phone proximity.
+models/phone_detector/best_yolo26_3class.pt (after created)
 
-Display detection results.
+dataset/phone_detection/
 
-Save an annotated output video.
+All .py scripts
 
-No webcam required.
-
-Step 8: Temporal Behaviour Recognition
-Track object positions across consecutive frames.
-
-Recognize possible events:
-
-Hand approaching phone
-
-Hand contacting phone
-
-Phone moving with hand
-
-Phone being held
-
-Phone being put down
-
-Hand moving away
-
-Use smoothing and confirmation windows to reduce false detections.
-
-Step 9: Behaviour State Machine
-Planned states:
-
+18. Working Scripts and Models
+Scripts
 text
-IDLE
-  |
-  v
-HAND_APPROACHING
-  |
-  v
-PHONE_PICKUP_CANDIDATE
-  |
-  v
-PHONE_IN_USE
-  |
-  v
-PHONE_PUT_DOWN_CANDIDATE
-  |
-  v
-SAVE_SESSION
-  |
-  v
-IDLE
-Do not start or stop the timer based on a single frame.
-
-Step 10: Usage Timer
-Implement:
-
-Session start timestamp
-
-Session end timestamp
-
-Usage duration
-
-Pickup count
-
-Daily usage total
-
-Average session duration
-
-Step 11: VideoMAE (Future)
-Explore fine-tuning MCG-NJU/videomae-base using custom behaviour clips.
-
-VideoMAE will complement YOLO; it will not replace the phone object detector.
-
-Step 12: Backend and Database
-Develop:
-
-FastAPI backend
-
-MongoDB session storage
-
-Behaviour detection endpoints
-
-Usage history endpoints
-
-Step 13: Frontend Dashboard
-Develop a React + Vite dashboard displaying:
-
-Current behaviour
-
-Current phone-use status
-
-Usage timer
-
-Daily usage
-
-Pickup count
-
-Average session duration
-
-Historical sessions
-
-Charts and analytics
-
-Step 14: Live Camera Integration
-When webcam hardware becomes available:
-
-Test OpenCV camera capture
-
-Connect the existing detection pipeline
-
-Run real-time behaviour recognition
-
-Test timer accuracy
-
-18. File Cleanup (Safe to Delete)
-To keep the project clean, the following files/folders are safe to delete after the current YOLO26 training finishes and the final model is saved:
-
-Item to Delete	Reason
-runs/detect/phone_v1/	Failed YOLO11 training run — no longer needed
-runs/detect/phone_v2/	Non-existent / empty / deprecated folder
-runs/detect/phone_yolo26_v1/	Early attempt (superseded by phone_yolo26_clean)
-runs/detect/train-2/	Smoke test run — no longer needed
-runs/detect/test_v1_held/	Old failed test results
-runs/detect/test_v1_desk/	Old failed test results
-runs/detect/mid_training_check/	Temporary check (delete after final model saved)
-runs/detect/mid_training_check_desk/	Temporary check (delete after final model saved)
-models/phone_detector/best_v1.pt	Failed YOLO11 model — do not use
-dataset/quarantine/	Bad annotations (optional: keep for review, but not needed)
-Do NOT delete:
-
-runs/detect/phone_yolo26_clean/ — this contains the final model
-
-models/phone_detector/ — this contains the permanent saved model
-
-dataset/phone_detection/ — this is the training data
-
-Any .py scripts listed in Section 19
-
-Any images/models referenced by the current combined_detection.py
-
-19. Current Working Scripts and Models
-Working Scripts
-text
-test_yolo.py              # Original YOLO11 setup test
-detect_phone.py           # Original YOLO11 phone detection
+test_yolo.py              # YOLO setup test
+detect_phone.py           # Phone detection on image
 test_hands.py             # MediaPipe hand detection
-combined_detection.py     # YOLO11 + MediaPipe (needs update to YOLO26)
+combined_detection.py     # YOLO11 + MediaPipe (needs update)
 validate_dataset.py       # Dataset structural validation
 visualize_dataset.py      # Dataset visual preview
 find_bad_labels.py        # Bad label detection
 quarantine_bad_labels.py  # Bad label quarantine
-camera_test.py            # Webcam test (no hardware)
-Current Dataset
+capture_negatives.py      # Webcam negative capture
+webcam_detection_v4.py    # Live detection (robust warmup)
+webcam_detection_v5.py    # Live detection + aspect filter
+smart_detection.py        # 3-layer filtered detection
+webcam_snapshot.py        # Single-frame diagnostic
+webcam_diag.py            # Multi-frame diagnostic
+Models
 text
-dataset/phone_detection/
-Dataset status (after cleaning):
-
-742 training images and labels
-
-219 validation images and labels
-
-109 test images and labels
-
-1,070 total images and matching labels
-
-1 class: phone (class ID 0)
-
-No oversized boxes (all w,h ≤ 0.95)
-
-No tiny boxes (all w,h ≥ 0.02)
-
-No invalid class IDs
-
-146 bad pairs quarantined at dataset/quarantine/
-
-Original labels preserved at labels_backup_before_normalization/
-
-Current Working Models
+yolo11n.pt                            # Pretrained COCO
+yolo26n.pt                            # Pretrained YOLO26
+hand_landmarker.task                  # MediaPipe hand
+models/phone_detector/best_v1.pt      # ❌ failed YOLO11
+models/phone_detector/best_yolo26.pt  # ✅ phone-only (mAP50=0.943)
+models/phone_detector/yolo26_last_pt.pt  # epoch 50
+models/phone_detector/best_yolo26_3class.pt  # 🟡 pending 3-class training
+Test Images
 text
-yolo11n.pt                # Pretrained COCO (baseline only)
-yolo26n.pt                # Pretrained YOLO26 (training base)
-hand_landmarker.task      # MediaPipe hand landmarker
-Trained Models
-text
-models/phone_detector/best_v1.pt              # ❌ FAILED — YOLO11 (do not use)
-runs/detect/phone_yolo26_clean/weights/best.pt # 🟡 IN PROGRESS — will be final model
-Current Test Images
-text
-sample_phone.jpg          # Easy case (phone in hand)
-phone_lying.jpg           # Hard case (phone on desk, misclassified as remote by YOLO11)
-Current Output
-text
-combined_detection_result.jpg   # Last YOLO11 + MediaPipe output
-hand_detection_result.jpg       # Last MediaPipe output
-20. CURRENT PROJECT POSITION — NOVEMBER 21, 2026
-Last completed milestone: Dataset cleaned (146 bad pairs quarantined), dataset verified clean, YOLO26 training started with stable hyperparameters.
+sample_phone.jpg    # Easy case (phone in hand)
+phone_lying.jpg     # Hard case (desk phone — misclassified by YOLO11)
+19. Current Project Position — November 23, 2026
+Last completed milestone: Phone-only YOLO26 model trained (mAP50 = 0.943). Dataset expanded with 30 wallet + 30 mouse negatives (as separate classes). Smoke test passed. 3-class fine-tuning in progress.
 
-Currently running: YOLO26 training — epoch 5/50 at time of this update. Estimated completion: ~4.5 hours from training start.
+Currently running: yolo detect train ... name=phone_wallet_mouse_v1 — 20 epochs, ~1.5 hours.
 
-Mid-training verification: At epoch 5, last.pt already detects sample_phone.jpg at 94% confidence. This confirms the model is learning correctly, unlike the failed YOLO11 v1 run.
+Mid-training status: Epoch ~5-8. Phone mAP50 should stay 0.90+, wallet/mouse starting to learn.
 
-Key learnings from this project so far:
+When training finishes:
 
-Dataset quality is more important than model architecture — the failed YOLO11 run had 151 bad annotations that poisoned training.
+Test on sample_phone.jpg and phone_lying.jpg — should show phone class at 0.85+
 
-Validation on the training set can be misleading — a model can have mAP50 = 0.84 and still detect nothing on real images.
+Webcam test — verify wallet shows as wallet (not phone)
 
-Mid-training inference checks on real images are the most reliable signal of training health.
+Save to models/phone_detector/best_yolo26_3class.pt
 
-YOLO26's box_loss behaves differently from YOLO11's — don't interpret it as regression if mAP50 is climbing.
+Back up to Desktop + D:\Phone_Dataset_Backup_YYYY-MM-DD\
 
-Use SGD with low LR for stable fine-tuning; AdamW with auto-tuned LR can cause catastrophic collapse on small datasets.
+Update combined_detection.py to use 3-class model
 
-Clean data + stable optimizer = smooth training. No more epoch-2 collapse.
+Build smart_detection.py with 3-layer filters
 
-NEXT IMMEDIATE TASK (When Training Finishes)
-Wait for training to complete (~4.5 hours from start).
+Move to video_detection.py
 
-Run final evaluation on test images:
+Key learnings:
 
-sample_phone.jpg
+Dataset quality > model architecture
 
-phone_lying.jpg
+High val mAP50 ≠ works on real images
 
-Verify both detect correctly at high confidence.
+Mid-training inference checks are the real health signal
 
-If successful: copy best.pt to models/phone_detector/best_yolo26.pt.
+YOLO26 box_loss behaves differently — trust mAP50
 
-Update combined_detection.py to use the new custom model.
+SGD + low LR is stable for fine-tuning
 
-Remove the POSSIBLE_PHONE_CLASSES workaround.
+Webcam requires DSHOW backend + warmup for real frames
 
-Move on to video processing (video_detection.py).
+YOLO will fire on any strong rectangle — app-layer filters needed
 
-What NOT to Do
-❌ Do not retrain the model unless evaluation shows it failed.
+Adding negatives as separate classes works better than empty labels
 
-❌ Do not stop training on the basis of box_loss alone — only if mAP50 drops or errors appear.
+Critical warnings:
 
-❌ Do not use models/phone_detector/best_v1.pt — it is broken.
+❌ Do not retrain phone-only model unless it fails
 
-❌ Do not delete dataset/quarantine/ unless you have reviewed the bad labels (may be useful for future analysis).
+❌ Do not delete phone_yolo26_final-2/ or phone_wallet_mouse_v1/
 
-❌ Do not modify data.yaml — it is correct.
+❌ Do not modify data.yaml without verifying nc: 3
 
-❌ Do not repeat dataset cleaning or validation — it is complete.
+❌ Do not add negatives to val/test splits (only train)
 
-Training Logs to Check
-When training completes, these files will exist:
+❌ Do not run git operations during training
+
+❌ Do not close the training terminal
 
 text
-runs/detect/phone_yolo26_clean/
-├── weights/
-│   ├── best.pt        ← the final model
-│   └── last.pt
-├── results.csv        ← epoch-by-epoch metrics
-├── results.png        ← visual charts
-├── confusion_matrix.png
-├── val_batch*_pred.jpg
-└── val_batch*_labels.jpg
-Look at results.png to confirm:
 
-train/box_loss, train/cls_loss, train/l1_loss slope down
+---
 
-metrics/mAP50, metrics/mAP50-95 slope up
+## How to Use This
 
-No catastrophic collapse (unlike YOLO11)
+**Save this entire content as `AI_Behaviour_Monitor_Project_Handover.md`** in `D:\AI-Behaviour-Monitor\`, replacing the old one.
 
+When starting a new ChatGPT conversation, paste the first 100 lines and say: *"Continue the AI Behaviour Monitor project from Section 19. Here's the current state."*
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-ecay=0.0), 126 weight(decay=0.0005), 126 bias(decay=0.
-Plotting labels to D:\AI-Behaviour-Monitor\runs\detect\pl-2\labels.jpg... 
-Using 742 train, 219 val images for fraction=1.0 at imgs
-Using 0 dataloader workers
-Logging results to D:\AI-Behaviour-Monitor\runs\detect\pl-2
-Starting training for 50 epochs...
-
-      Epoch    GPU_mem   box_loss   cls_loss    l1_loss  Size
-       1/50      …: 100% ━━━━━━━━━━━━ 47/47 5.3s/it 4:09
-                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 7/7 4.1s/it 28.4s
-                   all        219        249      0.808      0.776      0.831      0.571
-
-      Epoch    GPU_mem   box_loss   cls_loss    l1_loss  Instances       Size
-       2/50         0G      1.029      1.793    0.01622          8        640: 100% ━━━━━━━━━━━━ 47/47 5.1s/it 4:01
-                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 7/7 3.8s/it 26.5s
-                   all        219        249       0.86      0.767      0.844      0.595
-
-      Epoch    GPU_mem   box_loss   cls_loss    l1_loss  Instances       Size
-       3/50         0G      1.112      1.501     0.0178         16        640: 100% ━━━━━━━━━━━━ 47/47 5.2s/it 4:03
-                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 7/7 3.9s/it 27.6s
-                   all        219        249      0.771      0.675      0.728      0.477
-
-      Epoch    GPU_mem   box_loss   cls_loss    l1_loss  Instances       Size
-       4/50         0G      1.168      1.276    0.01889         10        640: 100% ━━━━━━━━━━━━ 47/47 5.3s/it 4:08
-                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 7/7 4.0s/it 27.7s
-                   all        219        249      0.818      0.735      0.791      0.507
-
-      Epoch    GPU_mem   box_loss   cls_loss    l1_loss  Instances       Size
-       5/50         0G        1.2      1.177     0.0193         13        640: 100% ━━━━━━━━━━━━ 47/47 5.1s/it 4:02
-                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 7/7 3.8s/it 26.8s
-                   all        219        249      0.797       0.74      0.809      0.524
-
-      Epoch    GPU_mem   box_loss   cls_loss    l1_loss  Instances       Size
-       6/50         0G       1.23      1.172    0.01999         13        640: 100% ━━━━━━━━━━━━ 47/47 5.1s/it 4:01
-                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 7/7 3.8s/it 26.9s
-                   all        219        249      0.852      0.755      0.824      0.539
-
-      Epoch    GPU_mem   box_loss   cls_loss    l1_loss  Instances       Size
-       7/50         0G       1.21      1.167    0.01934         10        640: 100% ━━━━━━━━━━━━ 47/47 5.2s/it 4:04
-                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 7/7 4.0s/it 28.1s
-                   all        219        249      0.774      0.715      0.771      0.444
-
-      Epoch    GPU_mem   box_loss   cls_loss    l1_loss  Instances       Size
-       8/50         0G        1.2      1.062    0.01967         10        640: 100% ━━━━━━━━━━━━ 47/47 5.1s/it 4:01
-                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 7/7 3.9s/it 27.1s
-                   all        219        249       0.81      0.747      0.824      0.525
-
-      Epoch    GPU_mem   box_loss   cls_loss    l1_loss  Instances       Size
-       9/50         0G      1.206      1.093    0.01929         22        640: 100% ━━━━━━━━━━━━ 47/47 5.1s/it 4:02
-                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 7/7 3.9s/it 27.1s
-                   all        219        249      0.883      0.763      0.867       0.53
-
-      Epoch    GPU_mem   box_loss   cls_loss    l1_loss  Instances       Size
-      10/50         0G      1.182      1.052     0.0195         16        640: 100% ━━━━━━━━━━━━ 47/47 5.2s/it 4:06
-                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 7/7 4.0s/it 28.2s
-                   all        219        249      0.879      0.811      0.883      0.573
-
-      Epoch    GPU_mem   box_loss   cls_loss    l1_loss  Instances       Size
-      11/50         0G      1.204      1.029    0.01931         12        640: 100% ━━━━━━━━━━━━ 47/47 5.2s/it 4:06
-                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 7/7 3.8s/it 26.6s
-                   all        219        249      0.848      0.808      0.874      0.579
-
-      Epoch    GPU_mem   box_loss   cls_loss    l1_loss  Instances       Size
-      12/50         0G      1.175     0.9342    0.01825         12        640: 100% ━━━━━━━━━━━━ 47/47 5.2s/it 4:07
-                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 7/7 3.8s/it 26.7s
-                   all        219        249      0.854      0.778       0.86      0.593
-
-      Epoch    GPU_mem   box_loss   cls_loss    l1_loss  Instances       Size
-      13/50         0G      1.124      0.928    0.01822         12        640: 100% ━━━━━━━━━━━━ 47/47 5.1s/it 4:00
-                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 7/7 3.8s/it 26.6s
-                   all        219        249      0.868      0.766      0.861      0.584
-
-      Epoch    GPU_mem   box_loss   cls_loss    l1_loss  Instances       Size
-      14/50         0G      1.127       0.93    0.01791         12        640: 100% ━━━━━━━━━━━━ 47/47 5.2s/it 4:06
-                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 7/7 3.9s/it 27.1s
-                   all        219        249        0.9      0.757      0.871      0.595
-
-      Epoch    GPU_mem   box_loss   cls_loss    l1_loss  Instances       Size
-      15/50         0G      1.153     0.9046    0.01857          7        640: 100% ━━━━━━━━━━━━ 47/47 5.1s/it 3:58
-                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 7/7 3.8s/it 26.3s
-                   all        219        249      0.898       0.78      0.866      0.573
-
-      Epoch    GPU_mem   box_loss   cls_loss    l1_loss  Instances       Size
-      16/50         0G      1.138     0.8891    0.01771          8        640: 100% ━━━━━━━━━━━━ 47/47 5.1s/it 3:58
-                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 7/7 3.8s/it 26.7s
-                   all        219        249      0.908      0.775      0.872      0.597
-
-      Epoch    GPU_mem   box_loss   cls_loss    l1_loss  Instances       Size
-      17/50         0G      1.129     0.8986    0.01768         19        640: 100% ━━━━━━━━━━━━ 47/47 5.2s/it 4:03
-                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 7/7 4.0s/it 27.7s
-                   all        219        249      0.872      0.843        0.9      0.624
-
-      Epoch    GPU_mem   box_loss   cls_loss    l1_loss  Instances       Size
-      18/50         0G      1.134     0.8354    0.01821         10        640: 100% ━━━━━━━━━━━━ 47/47 5.1s/it 4:02
-                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 7/7 3.7s/it 26.1s
-                   all        219        249       0.92      0.836        0.9      0.628
-
-      Epoch    GPU_mem   box_loss   cls_loss    l1_loss  Instances       Size
-      19/50         0G      1.096     0.8403    0.01688         17        640: 100% ━━━━━━━━━━━━ 47/47 5.1s/it 3:58
-                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 7/7 3.8s/it 26.6s
-                   all        219        249      0.871      0.869        0.9      0.614
-
-      Epoch    GPU_mem   box_loss   cls_loss    l1_loss  Instances       Size
-      20/50         0G      1.084      0.808    0.01685         23        640: 100% ━━━━━━━━━━━━ 47/47 5.1s/it 3:58
-                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 7/7 3.8s/it 26.8s
-                   all        219        249      0.853      0.912      0.927      0.646
-
-      Epoch    GPU_mem   box_loss   cls_loss    l1_loss  Instances       Size
-      21/50         0G      1.071     0.8369    0.01665         12        640: 100% ━━━━━━━━━━━━ 47/47 5.1s/it 3:57
-                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 7/7 3.8s/it 26.5s
-                   all        219        249       0.88      0.795      0.899      0.644
-
-      Epoch    GPU_mem   box_loss   cls_loss    l1_loss  Instances       Size
-      22/50         0G      1.072     0.7752    0.01633         16        640: 100% ━━━━━━━━━━━━ 47/47 5.0s/it 3:57
-                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 7/7 3.8s/it 26.5s
-                   all        219        249       0.89      0.835      0.912      0.657
-
-      Epoch    GPU_mem   box_loss   cls_loss    l1_loss  Instances       Size
-      23/50         0G      1.044     0.7681     0.0162         11        640: 100% ━━━━━━━━━━━━ 47/47 5.1s/it 3:58
-                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 7/7 3.8s/it 26.3s
-                   all        219        249      0.922       0.88      0.936      0.653
-
-      Epoch    GPU_mem   box_loss   cls_loss    l1_loss  Instances       Size
-      24/50         0G      1.052     0.7359    0.01587         20        640: 100% ━━━━━━━━━━━━ 47/47 5.1s/it 3:58
-                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 7/7 3.8s/it 26.8s
-                   all        219        249      0.862      0.854      0.905      0.657
-
-      Epoch    GPU_mem   box_loss   cls_loss    l1_loss  Instances       Size
-      25/50         0G       1.03     0.8095    0.01581         14        640: 100% ━━━━━━━━━━━━ 47/47 5.1s/it 3:58
-                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 7/7 3.8s/it 26.4s
-                   all        219        249      0.905      0.855      0.925      0.672
-
-      Epoch    GPU_mem   box_loss   cls_loss    l1_loss  Instances       Size
-      26/50         0G      1.035     0.7607    0.01567         18        640: 100% ━━━━━━━━━━━━ 47/47 5.1s/it 3:58
-                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 7/7 3.8s/it 26.4s
-                   all        219        249      0.925      0.837      0.905      0.647
-
-      Epoch    GPU_mem   box_loss   cls_loss    l1_loss  Instances       Size
-      27/50         0G     0.9955     0.7293    0.01459         14        640: 100% ━━━━━━━━━━━━ 47/47 5.1s/it 3:58
-                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 7/7 3.8s/it 26.3s
-                   all        219        249      0.898      0.847      0.913      0.665
-
-      Epoch    GPU_mem   box_loss   cls_loss    l1_loss  Instances       Size
-      28/50         0G      0.984     0.7191    0.01461         14        640: 100% ━━━━━━━━━━━━ 47/47 5.0s/it 3:57
-                 Class     Images  Instances      Box(P          R      mAP50  mAP50-95): 100% ━━━━━━━━━━━━ 7/7 3.8s/it 26.9s
-                   all        219        249      0.922      0.811      0.914      0.667
-
-      Epoch    GPU_mem   box_loss   cls_loss    l1_loss  Instances       Size
-      29/50         0G     0.9586     0.7297    0.01486         35        640: 55% ━━━━━━╸───── 26/47 5.2s/it 2:20<1:50
+The new assistant will know:
+- Exactly what's in progress (3-class training)
+- What to do next (test, save, integrate)
+- What NOT to do (avoid data loss)
+- Full context on all tools, models, and known issues

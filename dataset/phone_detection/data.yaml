@@ -3,6 +3,8 @@ train: images/train
 val: images/val
 test: images/test
 
-nc: 1
+nc: 3
 names:
   0: phone
+  1: wallet
+  2: mouse
