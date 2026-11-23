@@ -1,31 +1,42 @@
 
 import cv2
 
-# Open laptop webcam
-camera = cv2.VideoCapture(0, cv2.CAP_DSHOW)
+print("Searching for available cameras...\n")
 
-if not camera.isOpened():
-    print("Error: Could not access webcam!")
-    exit()
+for backend_name, backend in [
+    ("DirectShow", cv2.CAP_DSHOW),
+    ("Media Foundation", cv2.CAP_MSMF),
+]:
 
-print("Webcam connected successfully!")
-print("Press Q to close the camera.")
+    print(f"\nTesting {backend_name}")
 
-while True:
-    success, frame = camera.read()
+    for index in range(6):
 
-    if not success:
-        print("Failed to capture frame.")
-        break
+        cap = cv2.VideoCapture(index, backend)
 
-    # Display camera feed
-    cv2.imshow("AI Behaviour Monitor - Webcam Test", frame)
+        if not cap.isOpened():
+            cap.release()
+            continue
 
-    # Press Q to exit
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
+        ret, frame = cap.read()
 
-camera.release()
-cv2.destroyAllWindows()
+        if ret and frame is not None:
+            print(
+                f"Camera {index}: WORKING | "
+                f"Resolution: {frame.shape[1]}x{frame.shape[0]}"
+            )
 
-print("Webcam test completed.")
+            cv2.imshow(
+                f"{backend_name} - Camera {index}",
+                frame
+            )
+
+            cv2.waitKey(1500)
+            cv2.destroyAllWindows()
+
+        else:
+            print(f"Camera {index}: Opened but NO FRAME")
+
+        cap.release()
+
+print("\nCamera scan completed.")
